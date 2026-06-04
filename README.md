@@ -49,6 +49,10 @@ Welcher Provider/welches Modell mitspielt, ist reine Konfigurationssache
 - **Handel:** nicht Peer-to-Peer, sondern über ein **Order-Book je Farbpaar**
   (kontinuierliche Doppelauktion). Man kennt seine Gegenpartei nicht — wie an
   einer echten Börse.
+- **Kommunikation:** zusätzlich gibt es ein **namentliches Broadcast-Forum**
+  (Chat). Jeder Agent kann einen Beitrag posten (Name + Nachricht), den **alle**
+  Agenten sehen — zum Verhandeln, Signalisieren, Koordinieren oder Bluffen
+  (siehe §7.3). Der Handel selbst läuft weiter ausschließlich über das Order-Book.
 - **Escrow:** Beim Eingeben einer Order werden die angebotenen Skittles **sofort
   gesperrt**.
 - **Gebühr:** Die Börse ist ein Clearinghouse mit Gebühr — sie behält pro Trade
@@ -174,6 +178,8 @@ src/skittles/
     llm_agent.py     # LiteLLM-Agent + Tool-Call-Loop
     prompts.py       # System-Prompt + Beobachtungs-Text fürs LLM
     cost.py          # CostTracker (gemeinsamer Kosten-Deckel)
+  social/
+    forum.py         # geteiltes Broadcast-Forum (namentlicher Chat)
   sim/
     config.py        # pydantic-Config-Modelle + YAML-Loader
     engine.py        # Orchestrierung: Runden, Zugreihenfolge, Snapshots
@@ -251,6 +257,29 @@ Ein vollständig autonomer Trader. Pro Zug ein frischer Tool-Loop:
 - Die kurze Begründung, die das Modell pro Zug ausgibt, wird als `notes` für den
   Report gespeichert — die Grundlage der Strategie-Analyse.
 
+### 7.3 Das Forum (Chat)
+
+Ein **geteiltes, namentliches Broadcast-Forum** (`social/forum.py`) gibt den
+Agenten einen Kommunikationskanal — der bewusste Gegenpol zum anonymen
+Order-Book:
+
+- Mit `broadcast(message)` postet ein Agent eine Nachricht, die **seinen Namen
+  trägt** und von **allen** Agenten gesehen wird.
+- Die jüngsten Beiträge (Default 15, `forum_feed_size`) erscheinen bei jedem
+  Agenten direkt in der Beobachtung (Push); `view_forum` liest sie erneut.
+- Es ist **Cheap Talk**: niemand ist an seine Aussagen gebunden, Agenten dürfen
+  bluffen. Getauscht wird ausschließlich über das Order-Book.
+- Nachrichten sind auf 500 Zeichen begrenzt; nur LLM-Agenten nutzen das Forum
+  (die Heuristik schweigt).
+- Per `forum_enabled: false` lässt sich der Kanal abschalten — für
+  Ablations-Studien (Handel mit vs. ohne Kommunikation).
+
+Beiträge werden als `broadcast`-Events geloggt; `report.json` enthält die
+Beitrags-Anzahl je Agent (`broadcasts`), die Gesamtzahl (`total_broadcasts`) und
+das vollständige `forum_transcript`. In einem kurzen Testlauf pivotierte ein
+Agent sichtbar weg vom angekündigten Ziel eines Rivalen („*targeting highest
+color with least competition*") — emergente strategische Kommunikation.
+
 ## 8. Die Tool-API der Agenten
 
 Alle Aktionen laufen über den `ToolContext` (`src/skittles/agents/tools.py`).
@@ -264,6 +293,8 @@ Dem LLM werden sie als Function-Calling-Tools angeboten:
 | `my_orders()` | Eigene ruhende Orders mit IDs. |
 | `place_order(side, base, quote, quantity, price)` | Order setzen (validiert, escrowt, matcht). |
 | `cancel_order(order_id)` | Eigene Order stornieren, Escrow zurück. |
+| `broadcast(message)` | Namentliche Nachricht ins Forum posten (alle sehen sie). *Nur wenn Forum aktiv.* |
+| `view_forum()` | Jüngste Forum-Beiträge aller Agenten lesen. *Nur wenn Forum aktiv.* |
 | `end_turn()` | Zug beenden. |
 
 Argumente werden über pydantic validiert (`PlaceOrderArgs` etc.); ungültige Calls
@@ -282,6 +313,8 @@ Eine Experiment-Config ist eine YAML-Datei (Beispiele in `config/`). Felder:
 | `max_tool_calls_per_turn` | 12 | Obergrenze an Tool-Calls je LLM-Zug (begrenzt Kosten). |
 | `max_cost_usd` | 5.0 | Harter Kosten-Deckel pro Lauf; LLM-Agenten setzen bei Erreichen aus. `null` = unbegrenzt. |
 | `market_depth` | 5 | Wie viele Preis-Levels je Buch-Seite in Beobachtungen erscheinen. |
+| `forum_enabled` | `true` | Broadcast-Forum (Chat) an/aus. `false` für Ablations-Studien. |
+| `forum_feed_size` | 15 | Wie viele jüngste Forum-Beiträge je Zug gezeigt werden. |
 | `output_dir` | `runs` | Wohin Lauf-Artefakte geschrieben werden. |
 | `agents` | — | Liste der Teilnehmer (mind. 2, eindeutige IDs). |
 
@@ -410,7 +443,7 @@ Die jeweiligen Keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …) gehören in die
 ## 14. Tests
 
 ```bash
-pytest          # 24 Tests, < 1 s, kein Netz nötig
+pytest          # 31 Tests, < 1 s, kein Netz nötig
 ```
 
 Abgedeckt:
@@ -423,6 +456,8 @@ Abgedeckt:
   unter Last.
 - **`test_scoring.py`** — Sieger-Ermittlung, Tie-Breaks, Wertung nur auf
   `available`.
+- **`test_forum.py`** — Posten, geteilter Feed, Nachrichten-Cap, Tool-Verdrahtung,
+  An/Aus-Schalter.
 - **`test_llm_agent.py`** — Tool-Loop, Kostenerfassung, Budget-Gate, Fehler-
   Robustheit — alles mit injizierter Fake-Completion, **ohne echte API-Calls**.
 

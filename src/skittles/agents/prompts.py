@@ -42,12 +42,24 @@ HOW PLAY WORKS
 Think strategically: consolidating toward one color usually means selling your
 minority colors and buying your chosen color at acceptable rates."""
 
+FORUM_BLOCK = """
 
-def system_prompt(initial_skittles: int) -> str:
-    return SYSTEM_PROMPT.format(
+FORUM
+There is a shared public forum. With `broadcast` you post a message that carries
+your name and is seen by ALL agents; `view_forum` re-reads recent posts. Use it
+to negotiate trades, signal intent, propose coordination or mislead rivals. It is
+cheap talk: nobody is bound by what they say, and others may bluff. Trades only
+happen through the order book — the forum just lets you talk about them."""
+
+
+def system_prompt(initial_skittles: int, forum_enabled: bool = True) -> str:
+    text = SYSTEM_PROMPT.format(
         initial=initial_skittles,
         ranking=" < ".join(c.value for c in COLOR_ORDER),
     )
+    if forum_enabled:
+        text += FORUM_BLOCK
+    return text
 
 
 def build_observation(ctx: ToolContext) -> str:
@@ -87,5 +99,14 @@ def build_observation(ctx: ToolContext) -> str:
     else:
         lines.append("No resting orders in any market yet.")
 
-    lines.append("Act now: place/cancel orders, then call end_turn.")
+    if ctx.forum is not None:
+        posts = ctx.view_forum()["posts"]
+        if posts:
+            lines.append("Recent forum messages (all agents see these):")
+            for p in posts:
+                lines.append(f"  [r{p['round']}] {p['name']}: {p['message']}")
+        else:
+            lines.append("Forum is empty so far. You may broadcast a message.")
+
+    lines.append("Act now: place/cancel orders, optionally broadcast, then call end_turn.")
     return "\n".join(lines)

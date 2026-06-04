@@ -1,0 +1,21 @@
+# Quick end-to-end check that LLM agents actually use the forum. Cheap.
+rounds: 4
+seed: 7
+initial_skittles: 100
+fee_rate: 0.1
+max_tool_calls_per_turn: 8
+max_cost_usd: 0.5
+market_depth: 5
+forum_enabled: true
+
+agents:
+  - id: chatty-a
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.6
+  - id: chatty-b
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.6

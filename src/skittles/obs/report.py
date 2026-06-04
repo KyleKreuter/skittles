@@ -12,6 +12,7 @@ from skittles.sim.scoring import ScoreBoard
 if TYPE_CHECKING:  # avoid import cycles at runtime
     from skittles.agents.base import Agent
     from skittles.sim.config import ExperimentConfig
+    from skittles.social.forum import Forum
 
 
 def build_report(
@@ -23,10 +24,12 @@ def build_report(
     snapshots: list[dict],
     started_at: str,
     finished_at: str,
+    forum: "Forum | None" = None,
 ) -> dict:
     """Assemble the structured run report as a plain dict."""
     agents_by_id = {a.agent_id: a for a in agents}
     cfg_by_id = {a.id: a for a in config.agents}
+    broadcasts = forum.count_by_agent() if forum else {}
 
     per_agent = []
     for score in scoreboard.ranking:
@@ -41,6 +44,7 @@ def build_report(
                 "leading_count": score.leading_count,
                 "grand_total": score.grand_total,
                 "cost_usd": round(agent.cost_usd, 6) if agent else 0.0,
+                "broadcasts": broadcasts.get(score.agent_id, 0),
                 "trajectory": _trajectory(snapshots, score.agent_id),
                 "notes": agent.notes if agent else [],
             }
@@ -66,6 +70,8 @@ def build_report(
         "total_cost_usd": total_cost,
         "fees_collected": fees,
         "fees_collected_total": sum(fees.values()),
+        "total_broadcasts": len(forum.posts) if forum else 0,
+        "forum_transcript": [p.to_dict() for p in forum.posts] if forum else [],
         "agents": per_agent,
     }
 

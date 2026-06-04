@@ -48,6 +48,8 @@ class ExperimentConfig(BaseModel):
     max_tool_calls_per_turn: int = Field(default=12, ge=1)
     max_cost_usd: float | None = 5.0
     market_depth: int = Field(default=5, ge=1)
+    forum_enabled: bool = True                       # shared broadcast chat
+    forum_feed_size: int = Field(default=15, ge=1)   # recent posts shown per turn
     output_dir: str = "runs"
     agents: list[AgentConfig] = Field(min_length=2)
 

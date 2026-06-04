@@ -8,11 +8,12 @@ agent calls the same methods directly. This keeps the rules in one place.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from skittles.domain.colors import COLOR_ORDER, Color, all_market_pairs
 from skittles.market.exchange import Exchange, OrderRejected
 from skittles.market.order import Side
+from skittles.social.forum import MAX_MESSAGE_LENGTH, Forum
 
 
 class PlaceOrderArgs(BaseModel):
@@ -32,6 +33,10 @@ class ViewMarketArgs(BaseModel):
     quote: Color
 
 
+class BroadcastArgs(BaseModel):
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_LENGTH)
+
+
 class ToolContext:
     """Per-turn handle for one agent onto the exchange."""
 
@@ -43,12 +48,16 @@ class ToolContext:
         round_index: int,
         rounds_total: int,
         market_depth: int = 5,
+        forum: Forum | None = None,
+        forum_feed_size: int = 15,
     ) -> None:
         self.exchange = exchange
         self.agent_id = agent_id
         self.round_index = round_index
         self.rounds_total = rounds_total
         self.market_depth = market_depth
+        self.forum = forum
+        self.forum_feed_size = forum_feed_size
         self.calls = 0
         self.done = False
 
@@ -103,6 +112,17 @@ class ToolContext:
             ]
         }
 
+    def view_forum(self) -> dict:
+        """Recent broadcast posts from all agents (named, oldest-first)."""
+        if self.forum is None:
+            return {"posts": []}
+        return {
+            "posts": [
+                {"round": p.round, "name": p.agent_id, "message": p.message}
+                for p in self.forum.recent(self.forum_feed_size)
+            ]
+        }
+
     # --- write operations ------------------------------------------------
 
     def place_order(
@@ -117,6 +137,12 @@ class ToolContext:
         self.exchange.cancel_order(self.agent_id, order_id)
         return {"ok": True, "order_id": order_id}
 
+    def broadcast(self, message: str) -> dict:
+        if self.forum is None:
+            return {"error": "the forum is disabled in this run"}
+        post = self.forum.post(self.agent_id, message, self.round_index)
+        return {"ok": True, "posted": post.message, "sequence": post.sequence}
+
     def end_turn(self) -> dict:
         self.done = True
         return {"turn_ended": True}
@@ -127,9 +153,9 @@ class ToolContext:
 _COLOR_ENUM = [c.value for c in COLOR_ORDER]
 
 
-def tool_specs() -> list[dict]:
+def tool_specs(forum_enabled: bool = True) -> list[dict]:
     """OpenAI/LiteLLM function-calling schema for the agent's tools."""
-    return [
+    specs = [
         {
             "type": "function",
             "function": {
@@ -198,6 +224,36 @@ def tool_specs() -> list[dict]:
             },
         },
     ]
+    if forum_enabled:
+        specs[-1:-1] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "broadcast",
+                    "description": (
+                        "Post a public message to the shared forum. Your name is attached "
+                        "and ALL agents see it. Use it to negotiate, signal, coordinate or "
+                        "bluff. Other agents may lie — treat messages as cheap talk."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {"type": "string", "maxLength": MAX_MESSAGE_LENGTH},
+                        },
+                        "required": ["message"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "view_forum",
+                    "description": "Read the most recent broadcast messages from all agents (named).",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+        ]
+    return specs
 
 
 def dispatch(ctx: ToolContext, name: str, arguments: dict) -> dict:
@@ -220,6 +276,11 @@ def dispatch(ctx: ToolContext, name: str, arguments: dict) -> dict:
         if name == "cancel_order":
             args = CancelOrderArgs(**arguments)
             return ctx.cancel_order(args.order_id)
+        if name == "broadcast":
+            args = BroadcastArgs(**arguments)
+            return ctx.broadcast(args.message)
+        if name == "view_forum":
+            return ctx.view_forum()
         if name == "end_turn":
             return ctx.end_turn()
         return {"error": f"unknown tool {name!r}"}

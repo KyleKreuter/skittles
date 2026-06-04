@@ -19,6 +19,7 @@ from skittles.obs.events import EventLogger
 from skittles.obs.report import build_report, write_report
 from skittles.sim.config import AgentConfig, ExperimentConfig
 from skittles.sim.scoring import ScoreBoard, score_run
+from skittles.social.forum import Forum
 
 RoundCallback = Callable[[int, dict], None]
 
@@ -58,6 +59,7 @@ class SimulationEngine:
                 event_sink=logger.exchange_sink,
                 fee_rate=cfg.fee_rate,
             )
+            forum = Forum(event_sink=logger.exchange_sink) if cfg.forum_enabled else None
             tracker = CostTracker(cfg.max_cost_usd)
             agents = [self._build_agent(a, cfg, tracker) for a in cfg.agents]
 
@@ -85,6 +87,8 @@ class SimulationEngine:
                         round_index=r,
                         rounds_total=cfg.rounds,
                         market_depth=cfg.market_depth,
+                        forum=forum,
+                        forum_feed_size=cfg.forum_feed_size,
                     )
                     try:
                         agent.act(ctx)
@@ -117,6 +121,7 @@ class SimulationEngine:
                 snapshots=snapshots,
                 started_at=started_at,
                 finished_at=finished_at,
+                forum=forum,
             )
             write_report(run_dir, report)
             logger.log("run_finished", {
@@ -124,6 +129,7 @@ class SimulationEngine:
                 "total_trades": len(exchange.trades),
                 "total_cost_usd": report["total_cost_usd"],
                 "fees_collected_total": report["fees_collected_total"],
+                "total_broadcasts": report["total_broadcasts"],
             })
 
         return RunResult(

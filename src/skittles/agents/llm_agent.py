@@ -36,8 +36,8 @@ class LLMAgent(Agent):
         self._completion_fn = completion_fn
         self._cost = 0.0
         self._notes: list[str] = []
-        self._tools = tool_specs()
-        self._system = system_prompt(exp.initial_skittles)
+        self._tools = tool_specs(exp.forum_enabled)
+        self._system = system_prompt(exp.initial_skittles, exp.forum_enabled)
 
     @property
     def cost_usd(self) -> float:
