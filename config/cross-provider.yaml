@@ -1,0 +1,44 @@
+# Cross-provider showdown: Mistral vs OpenAI gpt-5.4-mini, plus heuristic control.
+# Needs MISTRAL_API_KEY and OPENAI_API_KEY in .env. Forum + memory are active.
+# gpt-5.4-mini runs with reasoning_effort=low (light, but enough to actually act).
+# Auto-stops once the market goes quiet for 5 rounds in a row.
+rounds: 40
+seed: 42
+initial_skittles: 100
+fee_rate: 0.1
+max_tool_calls_per_turn: 10
+max_cost_usd: 5.0
+market_depth: 5
+forum_enabled: true
+forum_feed_size: 15
+stop_after_dry_rounds: 5
+
+agents:
+  - id: mistral-large
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.5
+
+  - id: mistral-small
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.5
+
+  - id: gpt54mini-a
+    type: llm
+    provider: openai
+    model: gpt-5.4-mini
+    temperature: 0.4
+    reasoning_effort: medium
+
+  - id: gpt54mini-b
+    type: llm
+    provider: openai
+    model: gpt-5.4-mini
+    temperature: 0.8
+    reasoning_effort: medium
+
+  - id: baseline
+    type: heuristic

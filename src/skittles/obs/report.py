@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from skittles.market.exchange import Exchange
+from skittles.sim.eval import evaluate
 from skittles.sim.scoring import ScoreBoard
 
 if TYPE_CHECKING:  # avoid import cycles at runtime
@@ -50,6 +51,12 @@ def build_report(
             }
         )
 
+    # Log score in [0,1] vs the baseline (ground zero); also fold it per agent.
+    evaluation = evaluate(per_agent, initial_skittles=config.initial_skittles)
+    score_by_id = {s["agent_id"]: s["log_score"] for s in evaluation["scores"]}
+    for a in per_agent:
+        a["log_score"] = score_by_id.get(a["agent_id"], 0.0)
+
     total_cost = round(sum(a.cost_usd for a in agents), 6)
     fees = {c.value: n for c, n in exchange.fees_collected.items()}
 
@@ -66,12 +73,14 @@ def build_report(
             "num_agents": len(config.agents),
         },
         "winner": scoreboard.winner.agent_id,
+        "rounds_completed": snapshots[-1]["round"] if snapshots else 0,
         "total_trades": len(exchange.trades),
         "total_cost_usd": total_cost,
         "fees_collected": fees,
         "fees_collected_total": sum(fees.values()),
         "total_broadcasts": len(forum.posts) if forum else 0,
         "forum_transcript": [p.to_dict() for p in forum.posts] if forum else [],
+        "evaluation": evaluation,
         "agents": per_agent,
     }
 

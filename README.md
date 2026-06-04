@@ -22,7 +22,7 @@ gewinnt — ist die Forschungsvariable.
 9. [Konfigurations-Referenz](#9-konfigurations-referenz)
 10. [Ausgabe-Artefakte](#10-ausgabe-artefakte)
 11. [Setup & Ausführen](#11-setup--ausführen)
-12. [Auswertung](#12-auswertung)
+12. [Auswertung & Eval-Metrik](#12-auswertung--eval-metrik)
 13. [Provider mischen](#13-provider-mischen)
 14. [Tests](#14-tests)
 15. [Bisherige Ergebnisse](#15-bisherige-ergebnisse)
@@ -217,6 +217,9 @@ genau einer Stelle.
      anderer Agenten ausgeführt werden.
    - Ein Snapshot der Runde wird geschrieben (Inventare, führende Farbe je Agent,
      offene Orders, Trades dieser Runde).
+   - **Auto-Stop:** Kommt `stop_after_dry_rounds` Runden in Folge **kein Trade**
+     zustande (der Markt steht im Gleichgewicht), bricht der Lauf früh ab — wertet
+     aber normal aus (`report.json` wird geschrieben).
 4. **Abschluss:** Alle offenen Orders werden storniert, dann gewertet, der Report
    geschrieben und das Lauf-Verzeichnis geschlossen.
 
@@ -241,12 +244,19 @@ Nicht optimal, sondern als Referenzpunkt gedacht.
 
 Ein vollständig autonomer Trader. Pro Zug ein frischer Tool-Loop:
 
-- **Kein Verlauf über Runden hinweg.** System-Prompt + eine kompakte Beobachtung
-  (Inventar + Markt-Digest) als User-Message. Der Marktzustand selbst ist der
-  persistente Speicher, den das Modell neu beobachtet — das hält die Token-Kosten
-  über viele Runden beschränkt.
+- **Gedächtnis (Memory).** Pro Zug: System-Prompt + eine kompakte Beobachtung
+  (Inventar + Markt-Digest + Forum-Feed) als User-Message. Zusätzlich bekommt der
+  Agent seine **eigene Argumentation der letzten Runden** zurückgespielt
+  (`_memory`, Default 8 Runden) — ein Gedächtnis **ohne jede Verhaltensvorgabe**.
+  Das stabilisiert die Strategie spürbar (weniger Ziel-Wechsel, siehe §15) bei
+  weiterhin beschränkten Token-Kosten.
 - Das Modell ruft in einer Schleife Tools auf (max. `max_tool_calls_per_turn`),
   bis es `end_turn` aufruft oder das Budget erreicht ist.
+- **Reasoning-Steuerung:** Für Reasoning-Modelle (z. B. GPT-5.x) steuert
+  `reasoning_effort` (minimal/low/medium/high) die Denktiefe. Achtung: zu wenig
+  Reasoning → das Modell *beschreibt* Aktionen nur, ohne den Tool-Call abzusetzen
+  (empirisch belegt, siehe §15). Nicht unterstützte Parameter werden je Modell
+  still verworfen (`litellm.drop_params`).
 - **Fehler-Feedback:** Ungültige Aktionen (falscher Markt, zu wenig Inventar)
   liefern strukturierte `{"error": ...}`-Antworten zurück, sodass das Modell
   korrigieren kann (im Lauf beobachtet: mistral-large korrigierte einen
@@ -324,6 +334,7 @@ Eine Experiment-Config ist eine YAML-Datei (Beispiele in `config/`). Felder:
 | `market_depth` | 5 | Wie viele Preis-Levels je Buch-Seite in Beobachtungen erscheinen. |
 | `forum_enabled` | `true` | Broadcast-Forum (Chat) an/aus. `false` für Ablations-Studien. |
 | `forum_feed_size` | 15 | Wie viele jüngste Forum-Beiträge je Zug gezeigt werden. |
+| `stop_after_dry_rounds` | `null` | Früh abbrechen, wenn N Runden in Folge nichts gehandelt wird. `null` = aus. |
 | `output_dir` | `runs` | Wohin Lauf-Artefakte geschrieben werden. |
 | `agents` | — | Liste der Teilnehmer (mind. 2, eindeutige IDs). |
 
@@ -336,6 +347,7 @@ Eine Experiment-Config ist eine YAML-Datei (Beispiele in `config/`). Felder:
 | `provider` | z. B. `mistral`, `openai`, `anthropic` (nur für `llm`). |
 | `model` | z. B. `mistral-large-latest`. Mit `/` darin wird es direkt als LiteLLM-Modellstring genutzt. |
 | `temperature` | Sampling-Temperatur (Default 0.7). |
+| `reasoning_effort` | `minimal`/`low`/`medium`/`high` für Reasoning-Modelle (GPT-5.x). Default: nicht gesetzt. |
 | `persona` | Optionaler Zusatz zum System-Prompt. |
 
 **Beispiel (`config/dry-run.yaml`):**
@@ -358,7 +370,8 @@ agents:
 
 Mitgelieferte Configs: `dry-run.yaml` (API-frei), `mistral-smoke.yaml` (kurzer
 echter Lauf), `experiment.yaml` (50 Runden, 2 Modelle + Baseline),
-`temp-study.yaml` (10 LLMs über Temperaturen + Baseline).
+`temp-study.yaml` (10 LLMs über Temperaturen + Baseline),
+`cross-provider.yaml` (Mistral vs. OpenAI gpt-5.4-mini + Baseline, mit Auto-Stop).
 
 ## 10. Ausgabe-Artefakte
 
@@ -377,9 +390,11 @@ Anzahl offener Orders, Trades dieser Runde.
 
 ### `report.json` — die Zusammenfassung
 
-Sieger, Endstand (Score/Farbe/Gesamt je Agent), **Kosten je Agent**,
-**Trajektorie** (führende Farbe über die Runden, fürs Plotten), Strategie-`notes`,
-Trade-Gesamtzahl und der **Gebühren-Tresor** (`fees_collected` je Farbe + Summe).
+Sieger, gespielte Runden (`rounds_completed`), Endstand (Score/Farbe/Gesamt je
+Agent), **Kosten je Agent**, **`log_score`** je Agent + `evaluation`-Block (§12.2),
+**Trajektorie** (führende Farbe über die Runden), Strategie-`notes`, Trade-Gesamtzahl,
+**Forum** (`broadcasts` je Agent, `total_broadcasts`, `forum_transcript`) und der
+**Gebühren-Tresor** (`fees_collected` je Farbe + Summe).
 
 ### Plots (nach `scripts/analyze.py`)
 
@@ -415,7 +430,9 @@ PYTHONPATH=src python -m skittles.cli run -c config/dry-run.yaml -v
 `--verbose` zeigt pro Runde Trades und den führenden Bestand je Agent. Am Ende
 folgt der Endstand mit Sieger, Trades und Kosten.
 
-## 12. Auswertung
+## 12. Auswertung & Eval-Metrik
+
+### 12.1 Plots
 
 ```bash
 python scripts/analyze.py runs/<timestamp>
@@ -423,6 +440,31 @@ python scripts/analyze.py runs/<timestamp>
 
 Erzeugt die drei Plots direkt im Lauf-Verzeichnis. Für eine erzählende
 Auswertung siehe die konsolidierten Berichte in `reports/`.
+
+### 12.2 Eval-Metrik: `log_score` (Baseline = Ground Zero)
+
+Eine auf **[0, 1]** normierte Bewertung, die misst, ob ein Agent **Mehrwert
+gegenüber dem trivialen Heuristik-Baseline** bringt (Modul `src/skittles/sim/eval.py`):
+
+```
+log_score = clamp( ln(score / baseline) / ln(ceiling / baseline), 0, 1 )
+```
+
+- **Baseline = 0** (Ground Zero): nur so gut wie der stumpfe Baseline → kein Mehrwert.
+- **ceiling = 1** (Default = `initial_skittles`, also „alle 100 Skittles in einer
+  Farbe" = perfekt). Per `--ceiling` überschreibbar.
+- **Logarithmisch:** deutlich über den Baseline zu kommen zählt viel, Richtung
+  Perfektion flacht es ab. Bei oder unter dem Baseline → 0.
+
+Jeder Lauf bekommt automatisch `log_score` je Agent + einen `evaluation`-Block in
+der `report.json`. Standalone (auch für ältere Läufe):
+
+```bash
+python scripts/eval.py runs/<timestamp> [--ceiling N]
+```
+
+Ausgabe: Rangliste mit `log_score` und Balken; Ground Zero und Ceiling werden
+ausgewiesen.
 
 ## 13. Provider mischen
 
@@ -452,7 +494,7 @@ Die jeweiligen Keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …) gehören in die
 ## 14. Tests
 
 ```bash
-pytest          # 31 Tests, < 1 s, kein Netz nötig
+pytest          # 41 Tests, < 1 s, kein Netz nötig
 ```
 
 Abgedeckt:
@@ -467,12 +509,18 @@ Abgedeckt:
   `available`.
 - **`test_forum.py`** — Posten, geteilter Feed, Nachrichten-Cap, Tool-Verdrahtung,
   An/Aus-Schalter.
-- **`test_llm_agent.py`** — Tool-Loop, Kostenerfassung, Budget-Gate, Fehler-
-  Robustheit — alles mit injizierter Fake-Completion, **ohne echte API-Calls**.
+- **`test_llm_agent.py`** — Tool-Loop, Kostenerfassung, Budget-Gate, **Memory**
+  (Akkumulation + Wiedereinspielung), Fehler-Robustheit — mit injizierter
+  Fake-Completion, **ohne echte API-Calls**.
+- **`test_engine.py`** — Auto-Stop bei trockenen Runden, End-to-End-Erhaltung.
+- **`test_eval.py`** — `log_score` (Floor→0, Ceiling→1, Monotonie, Konkavität,
+  Degenerationsfälle), Baseline-Erkennung.
 
 ## 15. Bisherige Ergebnisse
 
-Der erste größere Lauf ist eine **Temperatur-Studie**: 5× `mistral-large` und 5×
+### 15.1 Temperatur-Studie (Mistral)
+
+Eine **Temperatur-Studie**: 5× `mistral-large` und 5×
 `mistral-small` (je eigene Temperatur) plus Heuristik-Baseline, 25 Runden. Der
 vollständige Bericht liegt unter
 [`reports/temperature-study.md`](reports/temperature-study.md). Kernbefunde:
@@ -485,6 +533,48 @@ vollständige Bericht liegt unter
   Letzter.
 - Die **kostenlose Baseline schlug 8 von 10 LLMs** im Kosten-Nutzen-Verhältnis —
   ein nüchterner Realitäts-Check.
+
+### 15.2 Cross-Provider- & Reasoning-Studie (Mistral vs. OpenAI)
+
+`config/cross-provider.yaml`: Mistral-large + Mistral-small + 2× **gpt-5.4-mini**
++ Heuristik-Baseline, mit Forum **und** Memory. Der `reasoning_effort` der
+GPT-Agenten wurde über drei Läufe variiert (minimal → low → medium),
+Auto-Stop nach 5 trockenen Runden.
+
+**Endstand `medium` (40 Runden), bewertet mit `log_score` (Baseline = Ground Zero, ceiling 100):**
+
+| # | Agent | Modell | Führend | `log_score` |
+|---|---|---|---|---|
+| 🥇 1 | gpt54mini-a | gpt-5.4-mini | 93 × Rot | **0.71** |
+| 2 | baseline | Heuristik | 78 × Blau | 0.00 |
+| 3 | gpt54mini-b | gpt-5.4-mini | 77 × Grün | 0.00 |
+| 4 | mistral-large | mistral-large | 75 × Orange | 0.00 |
+| 5 | mistral-small | mistral-small | 67 × Gelb | 0.00 |
+
+**`reasoning_effort` schaltet agentisches Handeln frei — und kostet:**
+
+| reasoning | gpt-5.4-mini-Verhalten | Sieger | Kosten |
+|---|---|---|---|
+| minimal | beide **passiv** (0 Orders — beschreiben Aktionen nur) | baseline | $0.14 |
+| low | nur das wärmere (temp 0.8) handelt | mistral-small | $0.21 |
+| **medium** | **beide aktiv, dominant** | **gpt54mini-a** | $1.59 |
+
+**Warum `gpt54mini-a` gewann:**
+
+1. **Genug Reasoning, um zu *handeln* statt nur zu reden.** Bei `minimal`/`low`
+   setzte gpt-5.4-mini den `place_order`-Call gar nicht ab — es *beschrieb* Orders
+   im Text und beendete den Zug. Erst `medium` brachte es dazu, seine Pläne
+   tatsächlich auszuführen. (Klarer Tempo-/Kosten-vs-Handlungsbereitschaft-Trade-off.)
+2. **Frühe, eiserne Festlegung auf Rot** — gestützt durchs **Memory**, das ihm
+   seine eigene Strategie der Vorrunden zurückspielt. Kein Ziel-Wechsel, im
+   Gegensatz zu `mistral-small`, das zwischen Farben sprang und auf 67 zurückfiel.
+3. **Diszipliniertes 1:1-Aufkaufen von Rot statt Über-Handeln.** `mistral-large`
+   legte 40 Orders und verlor durch Gebühren Bestand (total nur 84); `gpt54mini-a`
+   kaufte gezielt und hielt 93 (total 93).
+
+Es ist der **erste Lauf, in dem ein LLM den Baseline klar schlägt** (0.71 vs 0).
+Zugleich bleibt der Baseline robust (Platz 2, vor 3 von 4 LLMs) — die Eval-Metrik
+macht das unmissverständlich: **nur ein Agent liegt über 0**.
 
 ## 16. Erweitern
 
@@ -507,8 +597,12 @@ vollständige Bericht liegt unter
   eines Agenten hängt auch vom Feld ab.
 - **Gleichgewicht:** Sind alle Minderheitsfarben verkauft, versiegt der Handel —
   Farben, die niemandes Ziel sind (oft Blau/Orange), finden keine Gegenseite.
-- **Kein Gedächtnis:** Agenten beobachten den Markt jede Runde neu, ohne Verlauf —
-  beobachtetes „Hin-und-Her" kann teils Artefakt der zustandslosen Beobachtung
-  sein.
-- **Kosten:** Richtwert ~$0.0036 pro Runde mit large+small; `mistral-large` macht
-  den Großteil aus. `max_cost_usd` ist die harte Bremse.
+- **Gedächtnis & Determinismus:** LLM-Agenten erinnern sich an ihre eigene
+  Argumentation der Vorrunden (Memory), was das „Hin-und-Her" deutlich reduziert
+  hat — die LLM-Antworten bleiben aber nicht-deterministisch.
+- **Agentische Trägheit:** Manche Modelle (z. B. gpt-5.4-mini bei niedrigem
+  `reasoning_effort`) *beschreiben* Aktionen, ohne sie auszuführen — Ergebnisse
+  hängen also auch an der Reasoning-/Sampling-Einstellung, nicht nur am Können.
+- **Kosten:** stark modellabhängig. Mistral large+small ~$0.0036/Runde;
+  Reasoning-Modelle (GPT-5.x @ `medium`) ein Vielfaches — der `medium`-Lauf kostete
+  $1.59. `max_cost_usd` ist die harte Bremse.
