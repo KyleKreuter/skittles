@@ -1,0 +1,67 @@
+# Temperature study: 5x mistral-large + 5x mistral-small, each at a distinct
+# temperature, plus a free heuristic baseline as a control group.
+# 2x5 design: large covers 0.1/0.3/0.5/0.7/0.9, small covers 0.2/0.4/0.6/0.8/1.0
+# so every agent has its own temperature and both models span the full range.
+rounds: 25
+seed: 42
+initial_skittles: 100
+fee_rate: 0.1
+max_tool_calls_per_turn: 10
+max_cost_usd: 3.0
+market_depth: 5
+
+agents:
+  - id: large-t01
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.1
+  - id: large-t03
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.3
+  - id: large-t05
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.5
+  - id: large-t07
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.7
+  - id: large-t09
+    type: llm
+    provider: mistral
+    model: mistral-large-latest
+    temperature: 0.9
+
+  - id: small-t02
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.2
+  - id: small-t04
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.4
+  - id: small-t06
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.6
+  - id: small-t08
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 0.8
+  - id: small-t10
+    type: llm
+    provider: mistral
+    model: mistral-small-latest
+    temperature: 1.0
+
+  - id: baseline
+    type: heuristic

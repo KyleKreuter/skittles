@@ -1,0 +1,15 @@
+# API-free smoke test: only heuristic agents, no provider keys needed.
+rounds: 30
+seed: 42
+initial_skittles: 100
+fee_rate: 0.1          # house keeps 10% of each side's receipts per trade
+max_tool_calls_per_turn: 12
+market_depth: 5
+
+agents:
+  - id: heuristic-a
+    type: heuristic
+  - id: heuristic-b
+    type: heuristic
+  - id: heuristic-c
+    type: heuristic
