@@ -263,8 +263,9 @@ Ein **geteiltes, namentliches Broadcast-Forum** (`social/forum.py`) gibt den
 Agenten einen Kommunikationskanal — der bewusste Gegenpol zum anonymen
 Order-Book:
 
-- Mit `broadcast(message)` postet ein Agent eine Nachricht, die **seinen Namen
-  trägt** und von **allen** Agenten gesehen wird.
+- `broadcast(message)` nimmt **nur die Nachricht**; den **Namen hängt das System
+  automatisch an** (das Modell soll ihn nicht selbst schreiben). Der Beitrag wird
+  von **allen** Agenten gesehen.
 - Die jüngsten Beiträge (Default 15, `forum_feed_size`) erscheinen bei jedem
   Agenten direkt in der Beobachtung (Push); `view_forum` liest sie erneut.
 - Es ist **Cheap Talk**: niemand ist an seine Aussagen gebunden, Agenten dürfen
@@ -274,11 +275,19 @@ Order-Book:
 - Per `forum_enabled: false` lässt sich der Kanal abschalten — für
   Ablations-Studien (Handel mit vs. ohne Kommunikation).
 
+Der System-Prompt nennt konkrete, sinnvolle Verwendungen (neutral als Optionen,
+nicht als Vorgabe): **Zielfarben koordinieren** (wenn alle dieselbe Farbe horten,
+trocknet der Markt aus — eine weniger umkämpfte Farbe wählen schafft natürliche
+Handelspartner), **konkrete bilaterale Deals** (einen Agenten namentlich
+ansprechen, einen Tausch vorschlagen, beide legen passende Orders, die sich
+kreuzen), Raten abstimmen, Allianzen bilden oder bluffen.
+
 Beiträge werden als `broadcast`-Events geloggt; `report.json` enthält die
 Beitrags-Anzahl je Agent (`broadcasts`), die Gesamtzahl (`total_broadcasts`) und
-das vollständige `forum_transcript`. In einem kurzen Testlauf pivotierte ein
-Agent sichtbar weg vom angekündigten Ziel eines Rivalen („*targeting highest
-color with least competition*") — emergente strategische Kommunikation.
+das vollständige `forum_transcript`. Beobachtung in Testläufen: Mit klaren
+Verwendungs-Hinweisen koordinieren die Agenten komplementäre Zielfarben und
+verhandeln namentliche Tauschgeschäfte statt paralleler Werbe-Monologe — die
+Handelsdichte stieg im Demo-Lauf um rund das Achtfache.
 
 ## 8. Die Tool-API der Agenten
 
@@ -293,7 +302,7 @@ Dem LLM werden sie als Function-Calling-Tools angeboten:
 | `my_orders()` | Eigene ruhende Orders mit IDs. |
 | `place_order(side, base, quote, quantity, price)` | Order setzen (validiert, escrowt, matcht). |
 | `cancel_order(order_id)` | Eigene Order stornieren, Escrow zurück. |
-| `broadcast(message)` | Namentliche Nachricht ins Forum posten (alle sehen sie). *Nur wenn Forum aktiv.* |
+| `broadcast(message)` | Nachricht ins Forum posten (Name vom System angehängt; alle sehen sie). *Nur wenn Forum aktiv.* |
 | `view_forum()` | Jüngste Forum-Beiträge aller Agenten lesen. *Nur wenn Forum aktiv.* |
 | `end_turn()` | Zug beenden. |
 
