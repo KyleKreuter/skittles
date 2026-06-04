@@ -19,6 +19,7 @@ class AgentConfig(BaseModel):
     provider: str | None = None          # e.g. "mistral", "openai", "anthropic"
     model: str | None = None             # e.g. "mistral-large-latest"
     temperature: float = 0.7
+    reasoning_effort: str | None = None  # "minimal"/"low"/"medium"/"high" (GPT-5.x)
     persona: str | None = None           # optional extra system-prompt flavor
 
     @model_validator(mode="after")
@@ -50,6 +51,7 @@ class ExperimentConfig(BaseModel):
     market_depth: int = Field(default=5, ge=1)
     forum_enabled: bool = True                       # shared broadcast chat
     forum_feed_size: int = Field(default=15, ge=1)   # recent posts shown per turn
+    stop_after_dry_rounds: int | None = None         # abort if N rounds in a row trade nothing
     output_dir: str = "runs"
     agents: list[AgentConfig] = Field(min_length=2)
 

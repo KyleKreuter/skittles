@@ -36,6 +36,8 @@ class LLMAgent(Agent):
         self._completion_fn = completion_fn
         self._cost = 0.0
         self._notes: list[str] = []
+        # Per-round memory of the agent's own reasoning, replayed next turn.
+        self._memory: list[tuple[int, str]] = []
         self._tools = tool_specs(exp.forum_enabled)
         self._system = system_prompt(exp.initial_skittles, exp.forum_enabled)
 
@@ -54,8 +56,9 @@ class LLMAgent(Agent):
 
         messages: list[dict] = [
             {"role": "system", "content": self._system},
-            {"role": "user", "content": build_observation(ctx)},
+            {"role": "user", "content": build_observation(ctx, memory=self._memory)},
         ]
+        turn_contents: list[str] = []
 
         for _ in range(self.exp.max_tool_calls_per_turn):
             if self.tracker.exhausted():
@@ -75,6 +78,7 @@ class LLMAgent(Agent):
             content = (getattr(message, "content", None) or "").strip()
             if content:
                 self._notes.append(f"round {ctx.round_index}: {content}")
+                turn_contents.append(content)
 
             tool_calls = getattr(message, "tool_calls", None)
             if not tool_calls:
@@ -94,6 +98,9 @@ class LLMAgent(Agent):
             if ctx.done:
                 break
 
+        if turn_contents:
+            self._memory.append((ctx.round_index, " ".join(turn_contents)))
+
     # --- LLM call --------------------------------------------------------
 
     def _complete(self, messages: list[dict]) -> Any:
@@ -101,14 +108,20 @@ class LLMAgent(Agent):
         if fn is None:
             import litellm  # imported lazily so tests can inject a fake
 
+            # Silently drop params a given provider/model rejects (e.g. some
+            # reasoning models only accept the default temperature).
+            litellm.drop_params = True
             fn = litellm.completion
-        return fn(
+        kwargs = dict(
             model=self.cfg.litellm_model,
             messages=messages,
             tools=self._tools,
             tool_choice="auto",
             temperature=self.cfg.temperature,
         )
+        if self.cfg.reasoning_effort:
+            kwargs["reasoning_effort"] = self.cfg.reasoning_effort
+        return fn(**kwargs)
 
 
 def _response_cost(response: Any) -> float:

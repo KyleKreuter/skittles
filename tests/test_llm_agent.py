@@ -102,6 +102,30 @@ def test_invalid_tool_args_are_reported_not_crashing():
     assert len(ex.open_orders("llm")) == 0  # nothing got placed
 
 
+def test_memory_accumulates_and_is_replayed_next_turn():
+    from skittles.agents.prompts import build_observation
+
+    ex = make_exchange({"llm": {Color.RED: 50, Color.BLUE: 50}, "other": {Color.RED: 50}})
+    cfg, exp = _config()
+    tracker = CostTracker(limit_usd=10.0)
+
+    # Round 1: agent reasons, then ends its turn.
+    script = _Script([
+        _response("Targeting BLUE this round.", [_tool_call("c1", "end_turn", {})]),
+    ])
+    agent = LLMAgent(cfg, exp, tracker, completion_fn=script)
+    agent.act(ToolContext(ex, "llm", round_index=1, rounds_total=5))
+
+    assert agent._memory == [(1, "Targeting BLUE this round.")]
+
+    # Round 2: that memory must appear in the fresh observation.
+    obs = build_observation(
+        ToolContext(ex, "llm", round_index=2, rounds_total=5), memory=agent._memory
+    )
+    assert "your memory" in obs.lower()
+    assert "Targeting BLUE this round." in obs
+
+
 def test_budget_exhausted_skips_api_call():
     ex = make_exchange({"llm": {Color.RED: 50}, "other": {Color.RED: 50}})
     cfg, exp = _config()

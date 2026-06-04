@@ -74,6 +74,7 @@ class SimulationEngine:
             snapshots: list[dict] = []
             self._snapshot(exchange, agents, 0, snapshots, logger, trades_before=0)
 
+            dry_streak = 0
             for r in range(1, cfg.rounds + 1):
                 logger.current_round = r
                 turn_order = agents[:]
@@ -101,6 +102,16 @@ class SimulationEngine:
                 snap = self._snapshot(exchange, agents, r, snapshots, logger, trades_before)
                 if round_callback is not None:
                     round_callback(r, snap)
+
+                # Abort early if the market has gone quiet for N rounds running.
+                dry_streak = dry_streak + 1 if snap["round_trades"] == 0 else 0
+                if cfg.stop_after_dry_rounds and dry_streak >= cfg.stop_after_dry_rounds:
+                    logger.log("stopped_early", {
+                        "reason": "no_trades",
+                        "rounds_completed": r,
+                        "dry_streak": dry_streak,
+                    })
+                    break
 
             # Settle: cancel every resting order so all skittles are available.
             for agent in agents:

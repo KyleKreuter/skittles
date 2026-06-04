@@ -75,8 +75,14 @@ def system_prompt(initial_skittles: int, forum_enabled: bool = True) -> str:
     return text
 
 
-def build_observation(ctx: ToolContext) -> str:
-    """Compact per-turn observation: own state plus a market digest."""
+MEMORY_FEED_SIZE = 8
+MEMORY_ENTRY_CHARS = 400
+
+
+def build_observation(
+    ctx: ToolContext, memory: list[tuple[int, str]] | None = None
+) -> str:
+    """Compact per-turn observation: own state, a market digest and own memory."""
     state = ctx.get_state()
     inv = state["inventory"]
     holdings = ", ".join(
@@ -92,6 +98,11 @@ def build_observation(ctx: ToolContext) -> str:
         f"Currently leading: {state['leading_count']} × {state['leading_color']}.",
         f"Exchange fee: {state['fee_rate'] * 100:.0f}% of what you receive per trade.",
     ]
+
+    if memory:
+        lines.append("Your own notes from earlier rounds (your memory):")
+        for rnd, text in memory[-MEMORY_FEED_SIZE:]:
+            lines.append(f"  [r{rnd}] {text[:MEMORY_ENTRY_CHARS]}")
 
     open_orders = ctx.my_orders()["open_orders"]
     if open_orders:
