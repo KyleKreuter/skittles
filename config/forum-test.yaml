@@ -1,5 +1,5 @@
 # Quick end-to-end check that LLM agents actually use the forum. Cheap.
-rounds: 4
+rounds: 6
 seed: 7
 initial_skittles: 100
 fee_rate: 0.1

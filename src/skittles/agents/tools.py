@@ -231,9 +231,11 @@ def tool_specs(forum_enabled: bool = True) -> list[dict]:
                 "function": {
                     "name": "broadcast",
                     "description": (
-                        "Post a public message to the shared forum. Your name is attached "
-                        "and ALL agents see it. Use it to negotiate, signal, coordinate or "
-                        "bluff. Other agents may lie — treat messages as cheap talk."
+                        "Post a public message to the shared forum. Pass ONLY the message text "
+                        "— the system attaches your name automatically, so do not include it. "
+                        "ALL agents see the post. Use it to coordinate target colors, propose "
+                        "concrete swaps to a named agent, agree on rates, ally or bluff. "
+                        "Other agents may lie — treat messages as cheap talk."
                     ),
                     "parameters": {
                         "type": "object",

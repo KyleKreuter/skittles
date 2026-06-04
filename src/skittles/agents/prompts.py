@@ -45,11 +45,24 @@ minority colors and buying your chosen color at acceptable rates."""
 FORUM_BLOCK = """
 
 FORUM
-There is a shared public forum. With `broadcast` you post a message that carries
-your name and is seen by ALL agents; `view_forum` re-reads recent posts. Use it
-to negotiate trades, signal intent, propose coordination or mislead rivals. It is
-cheap talk: nobody is bound by what they say, and others may bluff. Trades only
-happen through the order book — the forum just lets you talk about them."""
+There is a shared public forum. Call `broadcast` with JUST a message — the system
+automatically attaches your name, so do NOT write your own name in the text. All
+agents see your post; `view_forum` re-reads recent ones.
+
+What the forum is genuinely useful for here:
+- COORDINATE TARGETS. If everyone hoards the same color, nobody can sell it to you
+  and the market dries up. Read what rivals are targeting and consider claiming a
+  DIFFERENT, less-contested color — then you and others naturally want to trade
+  with each other (each of you dumps what the other collects).
+- MAKE CONCRETE DEALS. Address another agent by name and propose a specific swap,
+  e.g. "bob: I'll give 20 BLUE for your 20 GREEN — place the matching order and
+  I'll cross it." Trades still execute only on the order book, so after you agree,
+  BOTH sides must place matching orders so they fill.
+- Agree on a rate to avoid wasting skittles on the fee; signal intent; form or
+  break temporary alliances; or bluff about your real target to mislead rivals.
+
+It is cheap talk: nobody is bound by what they say, and others may lie. Prefer
+specific, conditional offers and replies to others over generic announcements."""
 
 
 def system_prompt(initial_skittles: int, forum_enabled: bool = True) -> str:
